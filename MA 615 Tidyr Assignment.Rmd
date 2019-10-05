@@ -1,0 +1,297 @@
+---
+title: "Tidyverse Problem Set"
+author: "Runxin Yu"
+date: "October 4, 2019"
+output:
+  pdf_document: default
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(esquisse)
+knitr::opts_chunk$set(fig.pos = 'H')
+library(kableExtra)
+library(magrittr)
+library(tidyverse)
+library(dplyr)
+library(expss)
+library(tidyr)
+  options(tinytex.verbose = TRUE)
+  opts_chunk$set(echo = TRUE)
+```
+
+The purpose of this problem set is to provide data contexts in which to exercise the capabilitiues of the tidyverse. While some questons require specific answers, other parts of the problems have been written to be purposely ambiguous, requiring you to think through the presentation details of your answer. 
+
+
+HOLD THE PRESSES!  
+As I was preparing to post these problems yesterday, I noticed that tidyr had been updata in the last few weeks. I was looking for more exercises on gather() and spread() -- which are always difficult to master.  And I found that they have been superceded!!  Why do I love working with R as the tidyversie is on a path of continuous improvement? Because the improvements come from developers who write things like this:
+
+
+_For some time, it’s been obvious that there is something fundamentally wrong with the design of spread() and gather(). Many people don’t find the names intuitive and find it hard to remember which direction corresponds to spreading and which to gathering. It also seems surprisingly hard to remember the arguments to these functions, meaning that many people (including me!) have to consult the documentation every time._  [Hadley Wickham, Pivot Vingette](https://cran.r-project.org/web/packages/tidyr/vignettes/pivot.html)
+
+
+So... before you do anymore tidyverse exercises,
+Read this [tidyr 1.0.0](https://www.tidyverse.org/articles/2019/09/tidyr-1-0-0/).
+
+Then go to the [tidyr cran page](https://cran.r-project.org/web/packages/tidyr/index.html) 
+and to the examples and exercies in the new vignettes.
+
+In your solutions to the problems below, if you need to use table reshaping functions from TidyR, be sure that you use pivot_longer(), and pivot_wider().
+
+
+
+### Problem 1
+
+Load the gapminder data from the gapminder package.
+```{r}
+library(gapminder)
+data(gapminder)
+```
+How many continents are included in the data set?
+```{r}
+fct_unique(gapminder$continent)
+# It can be shown from the data above that there are 5 continents included in the data set.
+```
+How many countrys are included?  How many countries per continent?
+```{r}
+fct_unique(gapminder$country)
+# It can be shown from the data above that there are 142 countries included in the data set.
+gapminder %>% group_by(continent) %>% summarize(num_obs = n(), num_countries = n_distinct(country))
+# From the data above, there are 52 contries in Africa, 25 countries in Americas, 33 countries in Asia,
+# 30 countires in Europe and 2 countries in Oceania.
+```
+
+Using the gapminder data, produce a report showing the continents in the dataset, total population per continent, and GDP per capita.  Be sure that the table is properly labeled and suitable for inclusion in a printed report.
+```{r}
+df1 <- gapminder[,c("continent","pop","gdpPercap")]
+report <- aggregate(df1[,2:3],by=list(df1$continent),sum)
+kable(report, digits = 2,                                
+      col.names = c("Continent", "Total population per continent", "GDP per capita"), 
+      caption = "Total Population and GDP per capita by continents" ,align = 'c') %>%
+  kable_styling(latex_options = 'hold_position',font_size = 15.5,full_width = F)%>%
+  column_spec(1,bold = T)
+```
+Produce a well-labeled table that summarizes GDP per capita for the countries in each continent,  contrasting the years 1952 and 2007.
+```{r}
+options(digits = 3)
+gdp_52 <- gapminder %>% select(country,continent,year,gdpPercap) %>% filter(year == 1952)
+gdp_07 <- gapminder %>% select(country,continent,year,gdpPercap) %>% filter(year == 2007)
+
+gdp_52$year <- NULL
+gdp_07$year <- NULL
+
+table_top <- cbind(gdp_52, gdp_07)
+colnames(table_top) <- c("Country", "Continent", "GDP",
+                         "Country", "Continent", "GDP")
+kable(table_top, digits = 3, booktabs=TRUE, caption = "GDP per capita for the countries in each continent: 1952, 2007",align = 'c') %>% 
+  kable_styling(latex_options = 'hold_position',font_size = 12) %>%
+  column_spec(c(1,4),bold = T) %>% 
+  add_header_above(c("GDP 1952"=3,"GDP 2007"=3))
+```
+
+Product a plot that summarizes the same data as the table. There should be two plots per continent.
+```{r}
+gapminder %>%
+  filter(year %in% c(1952, 2007)) %>%
+  ggplot()+
+  geom_bar(mapping=aes(x=as.factor(year),y=gdpPercap),stat="identity")+
+  facet_grid(.~continent)
+```
+
+Which countries in the dataset have had periods of negative population growth?
+
+Illustrate your answer with a table or plot.
+
+Which countries in the dataset have had the highest rate of growth in per capita GDP?
+
+Illustrate your answer with a table or plot.
+```{r}
+gapminder_drop <- drop_na(gapminder)
+gapminder_drop %>% select (country, year, gdpPercap) %>%
+  filter(year %in% c(1952, 2007)) %>%
+  spread(year, gdpPercap) %>%
+  mutate(growth_rate = `2007`/`1952`-1)%>%
+  filter(rank(desc(growth_rate))<10) %>%
+  arrange(desc(growth_rate))
+
+```
+\newpage
+
+### Problem 2
+
+The data for Problem 2 is the Fertility data in the AER package.  This data is from the 1980 US Census and is comprised of date on married women aged 21-35 with two or more children.  The data report the gender of each woman's first and second child, the woman's race, age, number of weeks worked in 1979, and whether the woman had more than two children.
+```{r echo = FALSE}
+library(AER)
+data("Fertility")
+Fertility <- as_tibble(Fertility)
+```
+There are four possible gender combinations for the first two Children.  Product a plot the contracts the frequency of these four combinations. Are the frequencies different for women in their 20s and wemen who are older than 29?
+
+Produce a plot that contrasts the frequency of having more than two children by race and ethnicity.  
+```{r}
+## the contracts the frequency of these four combinations
+f_in20s<-Fertility %>% filter(age <30)
+f_out20s<-Fertility %>% filter(age >=30)
+ggplot(data = Fertility)+
+  geom_bar(mapping = aes(x=gender1))+
+  facet_grid(.~gender2)
+## frequencies compariasion for women in their 20s and wemen who are older than 29
+ggplot(data = Fertility)+
+  geom_bar(mapping = aes(x=gender1,fill = age <30))+
+  facet_grid(.~gender2)
+
+## contrasts the frequency of having more than two children 
+## by race and ethnicity for four groups of people:
+## afam, hispanic, other, or neither or these
+f3 <- Fertility %>% 
+  mutate(neither = (afam == "no" & hispanic == "no" & other == "no") )
+f4 <- f3%>%
+  within(neither[neither == TRUE]<- "yes")
+f_race <-f4 %>% gather(`afam`,`hispanic`,`other`,`neither`, key = ethnicity, value = "yes")%>%
+  filter(yes == "yes")
+ggplot(data = f_race)+
+  geom_bar(mapping =aes(x=ethnicity,fill = morekids))
+## Notice that there are some people have more than one ethnicity
+f_test <- f3 %>%
+  filter(afam=="yes" & hispanic == "yes")
+
+
+## contrasts the frequency of having more than two children 
+## by race and ethnicity for three groups of people:
+## afam, hispanic, other
+f_race_only_three <-Fertility %>% gather(`afam`,`hispanic`,`other`, key = ethnicity, value = "yes")%>%
+  filter(yes == "yes")
+ggplot(data = f_race_only_three)+
+  geom_bar(mapping =aes(x=ethnicity,fill = morekids))
+
+```
+
+### Problem 3
+
+Use the mtcars and mpg datasets.  
+```{r echo=FALSE}
+library(ggplot2)
+data(mpg)
+data("mtcars")
+```
+How many times does the letter "e" occur in mtcars rownames?
+```{r}
+mtc <- as_tibble(rownames_to_column(mtcars, var = "Model"))
+mtc$number.of.e <- str_count(mtc$Model, "e")
+sum(mtc$number.of.e)
+# The letter "e" in mtcars rownames occur 25 times.
+```
+How many cars in mtcars have the brand Merc?
+```{r}
+sum(str_count(mtc$Model,"Merc"))
+# There are 7 cars in mtcars have the brand Merc.
+```
+How many cars in mpg have the brand("manufacturer" in mpg) Merc?
+```{r}
+sum(str_count(mpg$manufacturer,"mercury"))
+# There are 4 cars in mpg have the brand Merc.
+```
+
+Contrast the mileage data for Merc cars as reported in mtcars and mpg.  Use tables, plots, and a short explaination.
+
+### Problem 4
+
+Install the babynames package.
+```{r}
+library(babynames)
+data(babynames)
+babyn <- as_tibble(babynames)
+```
+
+Draw a sample of 500,000 rows from the babynames data
+```{r}
+s <- sample(x = 1:1924665, size = 500000, replace = FALSE)
+```
+
+Produce a tabble that displays the five most popular boy names and girl names
+in the years 1880,1920, 1960, 2000.
+```{r}
+# For boys' names
+popular_boy_1880 <- babyn %>% select(year,sex,name,n) %>%
+    filter(sex == "M", year == 1880) %>% head(5)
+popular_boy_1880$year <- NULL
+popular_boy_1920 <- babyn %>% select(year,sex,name,n) %>%
+    filter(sex == "M", year == 1920) %>% head(5)
+popular_boy_1920$year <- NULL
+popular_boy_1960 <- babyn %>% select(year,sex,name,n) %>%
+    filter(sex == "M", year == 1960) %>% head(5)
+popular_boy_1960$year <- NULL
+popular_boy_2000 <- babyn %>% select(year,sex,name,n) %>%
+    filter(sex == "M", year == 2000) %>% head(5)
+popular_boy_2000$year <- NULL
+
+table_boy <- cbind(popular_boy_1880,popular_boy_1920,popular_boy_1960,popular_boy_2000)
+colnames(table_boy) <- c("Sex", "Name","Population",
+                     "Sex", "Name", "Population",
+                     "Sex", "Name", "Population",
+                     "Sex", "Name", "Population"
+                     )
+kable(table_boy, digits = 3,booktabs=TRUE,caption = "Top 5 popular boys names: 1880,1920,1960,2000",align = 'c') %>% kable_styling(latex_options = 'hold_position',font_size = 12)%>%
+ add_header_above(c("Name(boy) 1880"=3, 
+                     "Name(boy) 1920"=3,
+                     "Name(boy) 1960"=3,
+                     "Name(boy) 2000"=3))
+
+# For girls' names
+popular_girl_1880 <- babyn %>% select(year,sex,name,n) %>%
+    filter(sex == "F", year == 1880) %>% head(5)
+popular_girl_1880$year <- NULL
+popular_girl_1920 <- babyn %>% select(year,sex,name,n) %>%
+    filter(sex == "F", year == 1920) %>% head(5)
+popular_girl_1920$year <- NULL
+popular_girl_1960 <- babyn %>% select(year,sex,name,n) %>%
+    filter(sex == "F", year == 1960) %>% head(5)
+popular_girl_1960$year <- NULL
+popular_girl_2000 <- babyn %>% select(year,sex,name,n) %>%
+    filter(sex == "F", year == 2000) %>% head(5)
+popular_girl_2000$year <- NULL
+
+table_girl <- cbind(popular_girl_1880,popular_girl_1920,popular_girl_1960,popular_girl_2000)
+colnames(table_boy) <- c("Sex", "Name","Population",
+                     "Sex", "Name", "Population",
+                     "Sex", "Name", "Population",
+                     "Sex", "Name", "Population"
+                     )
+kable(table_girl, digits = 3,booktabs=TRUE,caption = "Top 5 popular girls names: 1880,1920,1960,2000",align = 'c') %>% kable_styling(latex_options = 'hold_position',font_size = 12)%>%
+ add_header_above(c("Name(girl) 1880"=3, 
+                     "Name(girl) 1920"=3,
+                     "Name(girl) 1960"=3,
+                     "Name(girl) 2000"=3))
+
+```
+What names overlap boys and girls?
+```{r}
+overlap<-babyn %>% group_by(year,name) %>% summarise(count = length(sex)) %>% arrange(desc(count)) %>% 
+  filter(count>1)
+unique(overlap$name)[1:10]
+```
+What names were used in the 19th century but have not been used in the 21sth century?
+```{r}
+nineteen <- babyn %>% filter(year > 1999)
+nineteen <- unique(nineteen$name)
+twenty <- babyn %>% filter(year < 1900)
+twenty <- unique(twenty$name)
+Int <- intersect(nineteen, twenty)
+Int[1:10]
+```
+Produce a chart that shows the relative frequency of the names "Donald", "Hilary", "Hillary", "Joe", "Barrack",  over the years 1880 through 2017.
+```{r}
+library(ggpubr)
+theme_set(theme_pubr())
+babyn %>% filter(name == c("Donald", "Hilary", "Hillary", "Joe", "Barrack"), 
+                 year >= 1800 & year <= 2017) %>%
+  ggplot()+
+  geom_bar(mapping=aes(x = as.factor(name),y = n),stat="identity",fill = "#0073C2FF")+
+  theme_pubclean()
+```
+
+
+
+
+
